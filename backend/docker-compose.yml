@@ -1,0 +1,33 @@
+# top level: the service names (defined by user, these could be any)
+app:
+  container_name: app
+  restart: always
+  # build from the Dockerfile in the current directory
+  build: .
+  # expose these ports, same as with docker run -p hostport:containerport
+  ports:
+    - "4001:4000"
+  # dependencies: this one needs the mongo service defined below
+  links:
+    - mongo
+
+mongo:
+  container_name: mongo
+  # we use the official image from the docker registry,
+  # so we don't need a dockerfile / build section for this
+  image: mongo
+  # expose container port 27017 **to other services**
+  # that means this port is NOT accessible by the host machine
+  # unless exposed using "ports" (see below)
+  expose:
+    - '27017'
+  # link the data directory in the current folder to 
+  # the /data/db directory inside the mongo container
+  # so we have a persistent database
+  volumes:
+    - ./data:/data/db
+  # expose port to host machine
+  # if only one port is specified, docker will assign a random
+  # host machine port to the specified container port
+  ports:
+    - "27017:27017"
