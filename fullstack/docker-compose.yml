@@ -1,0 +1,56 @@
+# docker-compose yaml version
+version: "3"
+# the services to install
+services: 
+  # the service names (defined by user, these could be any)
+  app:
+    container_name: app
+    restart: unless-stopped
+    # build from the Dockerfile in [current folder on host]/api
+    # basically calls
+    # "docker build ./api" to build the dockerfile located there
+    build: ./api
+    # expose these ports, same as with docker run -p hostport:containerport
+    ports:
+      - "4001:4000"
+    # dependencies: this one needs the mongo service defined below
+    # Containers for the linked service will be reachable at a hostname identical to the alias, 
+    # or the service name if no alias was specified.
+    # so in this case mongo will be reachable by mongo:
+    # also ensures right order of startup of services
+    links:
+      - mongo
+
+  client:
+    container_name: client
+    restart: unless-stopped
+    build: ./client
+    ports: 
+      - "3000:3000"
+    links:
+      - app
+
+  mongo:
+    container_name: mongo
+    # we use the official image from the docker registry,
+    # so we don't need a dockerfile / build section for this
+    image: mongo
+    # restart policy
+    # no / on-failure / always / unless-stopped
+    restart: unless-stopped
+    # expose container port 27017 **to other services**
+    # that means this port is NOT accessible by the host machine
+    # unless exposed using "ports" (see below)
+    
+    expose:
+      - '27017'
+    # link the data directory in the current folder to 
+    # the /data/db directory inside the mongo container
+    # so we have a persistent database
+    volumes:
+      - ./data:/data/db
+    # expose port to host machine
+    # if only one port is specified, docker will assign a random
+    # host machine port to the specified container port
+    ports:
+      - "27017:27017"

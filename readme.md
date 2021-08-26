@@ -25,6 +25,7 @@ Dockerfile: blueprint for container
 
     # copy files from the current directory 
     # to the working directory defined above
+    # same as COPY package*.json /user/src/app
     COPY package*.json ./
 
     # install the stuff from package.json inside the container
@@ -44,7 +45,7 @@ Dockerfile: blueprint for container
 
 ## Create image from from a dockerfile
 
-Create an image with name "pkro/simple-backend" using the current directory:
+Create an image with name "pkro/simple-backend" using the current directory (`.`):
 
 `docker build -t pkro/simple-backend .`
 
@@ -87,40 +88,39 @@ Allows to manage multiple containers in one file.
 
 docker-compose.yml:
 
-
     # top level: the service names (defined by user, these could be any)
     app:
-    container_name: app
-    restart: always
-    # build from the Dockerfile in the current directory
-    build: .
-    # expose these ports, same as with docker run -p hostport:containerport
-    ports:
-        - "4001:4000"
-    # dependencies: this one needs the mongo service defined below
-    links:
-        - mongo
+        container_name: app
+        restart: always
+        # build from the Dockerfile in the current directory
+        build: .
+        # expose these ports, same as with docker run -p hostport:containerport
+        ports:
+            - "4001:4000"
+        # dependencies: this one needs the mongo service defined below
+        links:
+            - mongo
 
     mongo:
-    container_name: mongo
-    # we use the official image from the docker registry,
-    # so we don't need a dockerfile / build section for this
-    image: mongo
-    # expose container port 27017 **to other services**
-    # that means this port is NOT accessible by the host machine
-    # unless exposed using "ports" (see below)
-    expose:
-        - '27017'
-    # link the data directory in the current folder to 
-    # the /data/db directory inside the mongo container
-    # so we have a persistent database
-    volumes:
-        - ./data:/data/db
-    # expose port to host machine
-    # if only one port is specified, docker will assign a random
-    # host machine port to the specified container port
-    ports:
-        - "27017:27017"
+        container_name: mongo
+        # we use the official image from the docker registry,
+        # so we don't need a dockerfile / build section for this
+        image: mongo
+        # expose container port 27017 **to other services**
+        # that means this port is NOT accessible by the host machine
+        # unless exposed using "ports" (see below)
+        expose:
+            - '27017'
+        # link the data directory in the current folder to 
+        # the /data/db directory inside the mongo container
+        # so we have a persistent database
+        volumes:
+            - ./data:/data/db
+        # expose port to host machine
+        # if only one port is specified, docker will assign a random
+        # host machine port to the specified container port
+        ports:
+            - "27017:27017"
 
 
 The mongo service can then be accessed by the app container like this (node example), *NOT* by `localhost`:
@@ -135,4 +135,106 @@ Single services (containers) can be started using `docker-compose up -d [service
 
 Use `docker-compose down` or `docker-compose stop` in the docker-compose.yml files directory to stop all containers.
 
-**Exercise: set up the react frontend**
+- `docker images` shows all images created on the system
+- `docker rmi [imageID] to remove an image
+
+Docker compose example that includes node backend, mongodb and a react frontend:
+
+    # docker-compose yaml version
+    version: "3"
+    # the services to install
+    services: 
+    # the service names (defined by user, these could be any)
+    app:
+        container_name: app
+        restart: unless-stopped
+        # build from the Dockerfile in [current folder on host]/api
+        # basically calls
+        # "docker build ./api" to build the dockerfile located there
+        build: ./api
+        # expose these ports, same as with docker run -p hostport:containerport
+        ports:
+        - "4001:4000"
+        # dependencies: this one needs the mongo service defined below
+        # Containers for the linked service will be reachable at a hostname identical to the alias, 
+        # or the service name if no alias was specified.
+        # so in this case mongo will be reachable by mongo:
+        # also ensures right order of startup of services
+        links:
+        - mongo
+
+    client:
+        container_name: client
+        restart: unless-stopped
+        build: ./client
+        ports: 
+        - "3000:3000"
+        links:
+        - app
+
+    mongo:
+        container_name: mongo
+        # we use the official image from the docker registry,
+        # so we don't need a dockerfile / build section for this
+        image: mongo
+        # restart policy
+        # no / on-failure / always / unless-stopped
+        restart: unless-stopped
+        # expose container port 27017 **to other services**
+        # that means this port is NOT accessible by the host machine
+        # unless exposed using "ports" (see below)
+        
+        expose:
+        - '27017'
+        # link the data directory in the current folder to 
+        # the /data/db directory inside the mongo container
+        # so we have a persistent database
+        volumes:
+        - ./data:/data/db
+        # expose port to host machine
+        # if only one port is specified, docker will assign a random
+        # host machine port to the specified container port
+        ports:
+        - "27017:27017"
+
+
+## Tips for other languages
+
+For image bases (apache, spring, wordpress, etc.) look for the images on dockerhub to put into the `FROM:` section.
+
+## CI (Continuous integration) and depoloyment with jenkins docker
+
+*TODO:  As travis-ci isn't free anymore check installing a local jenkins*
+
+Basic CI process:
+
+Develop - commit changes to repo - CI provider (e.g. Travis CI) tests the build and deploys
+
+Create .travis.yml in the apps directory ("node" in this example repo)
+
+sudo: required
+services:
+  - docker
+
+        # run commands
+        script:
+        # use own dockerhub ID, here: pkro, as we want to push it to the docker registry as deployment
+        - docker build -t pkro/node .
+        # just shows the image on stout (?)
+        - docker images pkro/node
+
+        before_deploy:
+        - docker login -u pkro -p <dockerhub pass or token>
+        deploy:
+        provider: script
+        script: docker push pkro/node
+        on:
+            branch: main
+
+Create a repo on github as usual and push everything there. Be sure to include .travis.yml in the commit (somehow it was ignored by `git add *` - investigate)
+
+Go to travis.com (travis.org is discontinued) and add the github repositories (upper right, settings) then trigger a build on the dashboard.
+
+When a build has been triggered by a commit/push or manually, we need to configure what needs to be done with it.
+
+Here, we'll deploy it to the docker registry.
